@@ -40,3 +40,12 @@ python -m http.server 8000
 ## Важно о данных
 
 Данные хранятся в браузере и на конкретном устройстве. Очистка данных сайта или потеря устройства может привести к потере записей. Регулярно сохраняй JSON-резервную копию в отдельное место. Приложение не подключается к банкам и не отправляет данные на сервер.
+
+
+## Development checks
+
+The financial calculation module is isolated in `src/core/finance.js` and has dependency-free unit tests. With Node.js 20 or newer installed, run:
+
+```bash
+npm test
+```
