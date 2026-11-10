@@ -17,7 +17,7 @@ Move toward clear boundaries without introducing a framework just for structure:
 
 - `src/core/`: pure financial calculations and validation; no DOM or storage access. The first extracted module is `src/core/finance.js`.
 - `src/data/`: persistence contract and backup/restore logic.
-- `src/data/web/`: IndexedDB implementation for the browser build.
+- `src/data/indexeddb.js`: current IndexedDB adapter implementing the storage API for the browser build.
 - `src/ui/`: page rendering and user interactions.
 - `src-tauri/`: desktop shell, permissions, native dialogs, and packaging configuration; add only when the web build is stable.
 
@@ -26,7 +26,7 @@ The exact folder layout may be adjusted during the refactor. Keep changes increm
 ## Persistence and migration rules
 
 1. Financial calculations must not depend on IndexedDB or Tauri APIs. The extracted core is covered by Node's built-in test runner via `npm test`.
-2. The UI should call a small storage interface instead of using IndexedDB directly.
+2. The UI calls the async storage API in `src/data/indexeddb.js`; direct IndexedDB access stays inside that adapter.
 3. Keep IndexedDB for the web build.
 4. For a future desktop build, choose its local persistence implementation only after a migration spike. SQLite is a candidate for structured local data, but is not a requirement yet.
 5. Provide an explicit, validated migration path from existing browser data and JSON backups. Never assume browser IndexedDB will automatically appear in the desktop app's data directory.
