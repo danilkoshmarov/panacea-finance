@@ -80,8 +80,7 @@ export async function getAll(storeName) {
   const database = await getDatabase();
   const transaction = database.transaction(storeName, 'readonly');
   const done = transactionDone(transaction);
-  const result = await requestResult(transaction.objectStore(storeName).getAll());
-  await done;
+  const [result] = await Promise.all([requestResult(transaction.objectStore(storeName).getAll()), done]);
   return result;
 }
 
@@ -90,8 +89,7 @@ export async function add(storeName, record) {
   const database = await getDatabase();
   const transaction = database.transaction(storeName, 'readwrite');
   const done = transactionDone(transaction);
-  const id = await requestResult(transaction.objectStore(storeName).add(record));
-  await done;
+  const [id] = await Promise.all([requestResult(transaction.objectStore(storeName).add(record)), done]);
   return id;
 }
 
@@ -100,8 +98,7 @@ export async function remove(storeName, id) {
   const database = await getDatabase();
   const transaction = database.transaction(storeName, 'readwrite');
   const done = transactionDone(transaction);
-  await requestResult(transaction.objectStore(storeName).delete(Number(id)));
-  await done;
+  await Promise.all([requestResult(transaction.objectStore(storeName).delete(Number(id))), done]);
 }
 
 export async function clearAll() {
