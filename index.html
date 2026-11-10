@@ -16,16 +16,63 @@
 <script>
 const DB='panacea-finance',VERSION=1;let db;
 const money=n=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(n||0);
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>{const d=new Date(),y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;};
 function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,VERSION);r.onupgradeneeded=()=>{for(const s of ['accounts','transactions','transfers','goals'])if(!r.result.objectStoreNames.contains(s))r.result.createObjectStore(s,{keyPath:'id',autoIncrement:true});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
 function all(s){return new Promise((res,rej)=>{const r=db.transaction(s).objectStore(s).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
 function add(s,x){return new Promise((res,rej)=>{const r=db.transaction(s,'readwrite').objectStore(s).add(x);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
 function remove(s,id){return new Promise((res,rej)=>{const r=db.transaction(s,'readwrite').objectStore(s).delete(Number(id));r.onsuccess=()=>res();r.onerror=()=>rej(r.error);});}
 function clear(s){return new Promise((res,rej)=>{const r=db.transaction(s,'readwrite').objectStore(s).clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error);});}
+function replaceAllStores(data){
+  return new Promise((resolve,reject)=>{
+    const stores=['accounts','transactions','transfers','goals'];
+    const tx=db.transaction(stores,'readwrite');
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error||new Error('Не удалось сохранить импорт'));
+    tx.onabort=()=>reject(tx.error||new Error('Импорт отменён, прежние данные сохранены'));
+    for(const name of stores){
+      const store=tx.objectStore(name);
+      store.clear();
+      for(const record of data[name]) store.put(record);
+    }
+  });
+}
+function validateBackup(data){
+  const fail=message=>{throw new Error(message);};
+  if(!data||typeof data!=='object'||Array.isArray(data))fail('Файл должен содержать объект резервной копии.');
+  if(data.app!=='Panacea Finance')fail('Это не резервная копия Panacea Finance.');
+  if(![1,2].includes(data.version))fail('Версия резервной копии не поддерживается.');
+  const names=['accounts','transactions','goals'];
+  for(const name of names)if(!Array.isArray(data[name]))fail('В резервной копии отсутствует раздел: '+name);
+  const normalized={accounts:data.accounts,transactions:data.transactions,transfers:Array.isArray(data.transfers)?data.transfers:[],goals:data.goals};
+  const idSet={};
+  for(const name of ['accounts','transactions','transfers','goals']){
+    idSet[name]=new Set();
+    for(const row of normalized[name]){
+      if(!row||typeof row!=='object'||Array.isArray(row))fail('Некорректная запись в разделе '+name+'.');
+      if(!Number.isSafeInteger(row.id)||row.id<1||idSet[name].has(row.id))fail('Некорректный или повторяющийся ID в разделе '+name+'.');
+      idSet[name].add(row.id);
+    }
+  }
+  const accountIds=idSet.accounts;
+  for(const a of normalized.accounts){
+    if(typeof a.name!=='string'||!a.name.trim()||a.name.length>40||typeof a.type!=='string'||!Number.isFinite(a.opening)||a.opening<0)fail('Некорректные данные счёта.');
+  }
+  const validDate=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value+'T00:00:00'));
+  for(const t of normalized.transactions){
+    if(!['income','expense'].includes(t.type)||!Number.isFinite(t.amount)||t.amount<=0||!accountIds.has(t.accountId)||typeof t.category!=='string'||t.category.length>80||!validDate(t.date)||typeof (t.note??'')!=='string'||(t.note??'').length>100)fail('Некорректная финансовая операция.');
+  }
+  for(const t of normalized.transfers){
+    if(!accountIds.has(t.fromId)||!accountIds.has(t.toId)||t.fromId===t.toId||!Number.isFinite(t.amount)||t.amount<=0||!validDate(t.date))fail('Некорректный перевод между счетами.');
+  }
+  for(const g of normalized.goals){
+    if(typeof g.name!=='string'||!g.name.trim()||g.name.length>60||!Number.isFinite(g.target)||g.target<=0||!Number.isFinite(g.current)||g.current<0)fail('Некорректная финансовая цель.');
+  }
+  return normalized;
+}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function balance(a,tx,tr){return Number(a.opening||0)+tx.filter(x=>x.accountId===a.id&&x.type==='income').reduce((n,x)=>n+x.amount,0)-tx.filter(x=>x.accountId===a.id&&x.type==='expense').reduce((n,x)=>n+x.amount,0)+tr.filter(x=>x.toId===a.id).reduce((n,x)=>n+x.amount,0)-tr.filter(x=>x.fromId===a.id).reduce((n,x)=>n+x.amount,0);}
 function renderTx(x){return '<div class="item"><div><strong>'+esc(x.note||x.category)+'</strong><small>'+esc(x.date)+' · '+esc(x.category)+'</small></div><div class="amount '+(x.type==='income'?'positive':'negative')+'">'+(x.type==='income'?'+':'−')+money(x.amount)+'</div></div>';}
-async function refresh(){const [a,t,tr,g]=await Promise.all(['accounts','transactions','transfers','goals'].map(all));const total=a.reduce((n,x)=>n+balance(x,t,tr),0),inc=t.filter(x=>x.type==='income').reduce((n,x)=>n+x.amount,0),out=t.filter(x=>x.type==='expense').reduce((n,x)=>n+x.amount,0);document.getElementById('balance').textContent=money(total);income.textContent=money(inc);expenses.textContent=money(out);net.textContent=money(inc-out);const sorted=[...t].sort((x,y)=>(y.date||'').localeCompare(x.date||''));recent.innerHTML=sorted.length?sorted.slice(0,5).map(renderTx).join(''):'<div class="empty">Операций пока нет.</div>';txList.innerHTML=sorted.length?sorted.map(x=>renderTx(x)+'<div style="text-align:right"><button class="danger" data-del-tx="'+x.id+'">Удалить</button></div>').join(''):'<div class="empty">Операций пока нет.</div>';accountList.innerHTML=a.map(x=>'<div class="card"><div class="metric-label">'+esc(x.type)+'</div><h3>'+esc(x.name)+'</h3><div class="metric">'+money(balance(x,t,tr))+'</div><div class="foot">Начальный остаток: '+money(x.opening)+'</div></div>').join('')||'<div class="empty">Создай первый счёт.</div>';const opts=a.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');['txAccount','transferFrom','transferTo'].forEach(id=>{const el=document.getElementById(id),old=el.value;el.innerHTML=opts;if([...el.options].some(o=>o.value===old))el.value=old;});goalList.innerHTML=g.map(x=>{const p=Math.min(100,x.current/x.target*100);return '<div class="item" style="display:block"><div class="row"><strong>'+esc(x.name)+'</strong><button class="danger" data-del-goal="'+x.id+'">Удалить</button></div><div class="row muted"><span>'+money(x.current)+' из '+money(x.target)+'</span><span>'+p.toFixed(1)+'%</span></div><div class="progress"><span style="width:'+p+'%"></span></div></div>';}).join('')||'<div class="empty">Целей пока нет.</div>';}
+async function refresh(){const [a,t,tr,g]=await Promise.all(['accounts','transactions','transfers','goals'].map(all));const total=a.reduce((n,x)=>n+balance(x,t,tr),0),inc=t.filter(x=>x.type==='income').reduce((n,x)=>n+x.amount,0),out=t.filter(x=>x.type==='expense').reduce((n,x)=>n+x.amount,0);document.getElementById('balance').textContent=money(total);income.textContent=money(inc);expenses.textContent=money(out);net.textContent=money(inc-out);const sorted=[...t].sort((x,y)=>(y.date||'').localeCompare(x.date||''));recent.innerHTML=sorted.length?sorted.slice(0,5).map(renderTx).join(''):'<div class="empty">Операций пока нет.</div>';txList.innerHTML=sorted.length?sorted.map(x=>renderTx(x)+'<div style="text-align:right"><button class="danger" data-del-tx="'+esc(x.id)+'">Удалить</button></div>').join(''):'<div class="empty">Операций пока нет.</div>';accountList.innerHTML=a.map(x=>'<div class="card"><div class="metric-label">'+esc(x.type)+'</div><h3>'+esc(x.name)+'</h3><div class="metric">'+money(balance(x,t,tr))+'</div><div class="foot">Начальный остаток: '+money(x.opening)+'</div></div>').join('')||'<div class="empty">Создай первый счёт.</div>';const opts=a.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');['txAccount','transferFrom','transferTo'].forEach(id=>{const el=document.getElementById(id),old=el.value;el.innerHTML=opts;if([...el.options].some(o=>o.value===old))el.value=old;});goalList.innerHTML=g.map(x=>{const p=Math.min(100,x.current/x.target*100);return '<div class="item" style="display:block"><div class="row"><strong>'+esc(x.name)+'</strong><button class="danger" data-del-goal="'+esc(x.id)+'">Удалить</button></div><div class="row muted"><span>'+money(x.current)+' из '+money(x.target)+'</span><span>'+p.toFixed(1)+'%</span></div><div class="progress"><span style="width:'+p+'%"></span></div></div>';}).join('')||'<div class="empty">Целей пока нет.</div>';}
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.section').forEach(x=>x.classList.toggle('active',x.id===b.dataset.tab));});
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>document.querySelector('[data-tab="'+b.dataset.goto+'"]').click());
 txForm.onsubmit=async e=>{e.preventDefault();const amount=Number(txAmount.value);if(amount<=0)return;await add('transactions',{type:txType.value,amount,accountId:Number(txAccount.value),category:txCategory.value,date:txDate.value,note:txNote.value.trim()});e.target.reset();txDate.value=today();await refresh();};
@@ -36,7 +83,7 @@ document.addEventListener('click',async e=>{const x=e.target;if(x.dataset.delTx&
 function calc(){const sale=+saleEl.value||0,cost=+costEl.value||0,other=+otherEl.value||0,fee=+feeEl.value||0,p=sale-cost-other-sale*fee/100;marginEl.textContent=(sale?p/sale*100:0).toFixed(1)+'%';simProfit.textContent=money(p);simProfit.className='metric '+(p>=0?'positive':'negative');simExplain.textContent='Комиссия: '+money(sale*fee/100)+'. Налоги и неуказанные расходы не учтены.';}
 const saleEl=document.getElementById('sale'),costEl=document.getElementById('cost'),otherEl=document.getElementById('other'),feeEl=document.getElementById('fee'),marginEl=document.getElementById('simMargin');simForm.onsubmit=e=>{e.preventDefault();calc();};[saleEl,costEl,otherEl,feeEl].forEach(x=>x.oninput=calc);
 exportBtn.onclick=async()=>{const data={app:'Panacea Finance',version:2,exportedAt:new Date().toISOString()};for(const s of ['accounts','transactions','transfers','goals'])data[s]=await all(s);const a=document.createElement('a'),u=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.href=u;a.download='panacea-finance-backup.json';a.click();URL.revokeObjectURL(u);};
-importBtn.onclick=()=>importFile.click();importFile.onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.accounts)||!Array.isArray(d.transactions)||!Array.isArray(d.goals))throw Error('Неверный формат');if(!confirm('Импорт заменит текущие данные. Продолжить?'))return;for(const s of ['accounts','transactions','transfers','goals']){await clear(s);for(const x of d[s]||[])await add(s,x);}await refresh();alert('Импорт завершён.');}catch(err){alert('Ошибка импорта: '+err.message);}e.target.value='';};
+importBtn.onclick=()=>importFile.click();importFile.onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>5*1024*1024)throw Error('Файл слишком большой (лимит 5 МБ).');const raw=JSON.parse(await f.text());const data=validateBackup(raw);if(!confirm('Импорт заменит текущие данные. Сначала будет проверен весь файл, затем изменения сохранятся одной транзакцией. Продолжить?'))return;await replaceAllStores(data);await refresh();alert('Импорт завершён. Текущие данные заменены успешно.');}catch(err){alert('Ошибка импорта: '+err.message);}finally{e.target.value='';}};
 clearBtn.onclick=async()=>{if(confirm('Удалить все счета, операции, переводы и цели?')){for(const s of ['accounts','transactions','transfers','goals'])await clear(s);await refresh();}};
 (async()=>{try{db=await openDB();if(!(await all('accounts')).length)for(const x of [{name:'Банковская карта',type:'Банковская карта',opening:0},{name:'Наличные',type:'Наличные',opening:0},{name:'Оборотный капитал',type:'Оборотный капитал',opening:0},{name:'Накопления',type:'Накопления',opening:0}])await add('accounts',x);dbStatus.textContent='Локальная база IndexedDB готова. Данные не отправляются на сервер.';txDate.value=today();await refresh();calc();}catch(e){dbStatus.textContent='Ошибка IndexedDB: '+e.message;}})();
 </script></body></html>
