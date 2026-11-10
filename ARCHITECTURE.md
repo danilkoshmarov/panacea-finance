@@ -15,7 +15,7 @@ Panacea Finance is developed web-first, then packaged as a native Windows deskto
 
 Move toward clear boundaries without introducing a framework just for structure:
 
-- `src/core/`: pure financial calculations and validation; no DOM or storage access.
+- `src/core/`: pure financial calculations and validation; no DOM or storage access. The first extracted module is `src/core/finance.js`.
 - `src/data/`: persistence contract and backup/restore logic.
 - `src/data/web/`: IndexedDB implementation for the browser build.
 - `src/ui/`: page rendering and user interactions.
@@ -25,7 +25,7 @@ The exact folder layout may be adjusted during the refactor. Keep changes increm
 
 ## Persistence and migration rules
 
-1. Financial calculations must not depend on IndexedDB or Tauri APIs.
+1. Financial calculations must not depend on IndexedDB or Tauri APIs. The extracted core is covered by Node's built-in test runner via `npm test`.
 2. The UI should call a small storage interface instead of using IndexedDB directly.
 3. Keep IndexedDB for the web build.
 4. For a future desktop build, choose its local persistence implementation only after a migration spike. SQLite is a candidate for structured local data, but is not a requirement yet.
