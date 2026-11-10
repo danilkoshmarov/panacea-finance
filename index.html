@@ -57,7 +57,7 @@ function validateBackup(data){
   for(const a of normalized.accounts){
     if(typeof a.name!=='string'||!a.name.trim()||a.name.length>40||typeof a.type!=='string'||!Number.isFinite(a.opening)||a.opening<0)fail('Некорректные данные счёта.');
   }
-  const validDate=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value+'T00:00:00'));
+  const validDate=value=>{if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;const [y,m,d]=value.split('-').map(Number),date=new Date(Date.UTC(y,m-1,d));return date.getUTCFullYear()===y&&date.getUTCMonth()===m-1&&date.getUTCDate()===d;};
   for(const t of normalized.transactions){
     if(!['income','expense'].includes(t.type)||!Number.isFinite(t.amount)||t.amount<=0||!accountIds.has(t.accountId)||typeof t.category!=='string'||t.category.length>80||!validDate(t.date)||typeof (t.note??'')!=='string'||(t.note??'').length>100)fail('Некорректная финансовая операция.');
   }
