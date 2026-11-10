@@ -14,7 +14,15 @@
 <section id="goals" class="section"><h2>Цели и переезд</h2><p class="sub">Создавай финансовые цели и отслеживай прогресс.</p><div class="two"><div class="card"><h3>Новая цель</h3><form id="goalForm"><label class="wide">Название<input id="goalName" required maxlength="60" placeholder="Переезд в Санкт-Петербург"></label><label>Нужно, ₽<input id="goalTarget" type="number" min=".01" step=".01" required></label><label>Уже накоплено, ₽<input id="goalCurrent" type="number" min="0" step=".01" value="0"></label><div class="wide"><button class="primary">Добавить цель</button></div></form></div><div class="card"><h3>Мои цели</h3><div id="goalList" class="list"></div></div></div></section>
 <section id="settings" class="section"><h2>Данные и резервные копии</h2><p class="sub">Информация не отправляется на сервер. Сохраняй резервную копию.</p><div class="card"><div id="dbStatus" class="muted">Подключение к локальной базе…</div><div class="actions"><button class="primary" id="exportBtn">Экспорт JSON</button><button id="importBtn">Импорт JSON</button><input id="importFile" type="file" accept="application/json" hidden><button class="danger" id="clearBtn">Очистить все данные</button></div><p class="foot">Очистка браузерных данных может удалить записи. Резервная копия хранится у тебя в файле.</p></div></section>
 </div>
-<script>
+<script type="module">
+import {
+  calculateAccountBalance as balance,
+  calculateFinancialTotals,
+  calculateMonthlyAnalytics,
+  calculateMoveScenario,
+  calculateUnitEconomics,
+  calculateGoalProgress
+} from './src/core/finance.js';
 const DB='panacea-finance',VERSION=1;let db;
 const money=n=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(n||0);
 const today=()=>{const d=new Date(),y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;};
@@ -73,10 +81,24 @@ function validateBackup(data){
   return normalized;
 }
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function balance(a,tx,tr){return Number(a.opening||0)+tx.filter(x=>x.accountId===a.id&&x.type==='income').reduce((n,x)=>n+x.amount,0)-tx.filter(x=>x.accountId===a.id&&x.type==='expense').reduce((n,x)=>n+x.amount,0)+tr.filter(x=>x.toId===a.id).reduce((n,x)=>n+x.amount,0)-tr.filter(x=>x.fromId===a.id).reduce((n,x)=>n+x.amount,0);}
 function renderTx(x){return '<div class="item"><div><strong>'+esc(x.note||x.category)+'</strong><small>'+esc(x.date)+' · '+esc(x.category)+'</small></div><div class="amount '+(x.type==='income'?'positive':'negative')+'">'+(x.type==='income'?'+':'−')+money(x.amount)+'</div></div>';}
-function renderMonthAnalytics(transactions){const field=document.getElementById('monthFilter');if(!field.value)field.value=today().slice(0,7);const month=field.value,items=transactions.filter(x=>(x.date||'').slice(0,7)===month),inc=items.filter(x=>x.type==='income').reduce((n,x)=>n+x.amount,0),out=items.filter(x=>x.type==='expense').reduce((n,x)=>n+x.amount,0),groups={};items.filter(x=>x.type==='expense').forEach(x=>groups[x.category]=(groups[x.category]||0)+x.amount);document.getElementById('monthIncome').textContent=money(inc);document.getElementById('monthExpenses').textContent=money(out);const net=inc-out;document.getElementById('monthNet').textContent=money(net);document.getElementById('monthNet').className='metric '+(net>=0?'positive':'negative');document.getElementById('monthCount').textContent=String(items.length);const sorted=Object.entries(groups).sort((a,b)=>b[1]-a[1]);document.getElementById('monthCategories').innerHTML=sorted.length?sorted.map(([name,value])=>'<div class="item"><span>'+esc(name)+'</span><strong>'+money(value)+'</strong></div>').join(''):'<div class="empty">Расходов за этот месяц нет.</div>';document.getElementById('monthInsight').textContent=items.length?'За месяц внесено '+items.length+' операций. '+(net>=0?'Доходы превышают расходы на '+money(net)+'.':'Расходы превышают доходы на '+money(-net)+'.'):'За выбранный месяц операций нет.';}
-async function refresh(){const [a,t,tr,g]=await Promise.all(['accounts','transactions','transfers','goals'].map(all));renderMonthAnalytics(t);const total=a.reduce((n,x)=>n+balance(x,t,tr),0),inc=t.filter(x=>x.type==='income').reduce((n,x)=>n+x.amount,0),out=t.filter(x=>x.type==='expense').reduce((n,x)=>n+x.amount,0);document.getElementById('balance').textContent=money(total);income.textContent=money(inc);expenses.textContent=money(out);net.textContent=money(inc-out);const sorted=[...t].sort((x,y)=>(y.date||'').localeCompare(x.date||''));recent.innerHTML=sorted.length?sorted.slice(0,5).map(renderTx).join(''):'<div class="empty">Операций пока нет.</div>';txList.innerHTML=sorted.length?sorted.map(x=>renderTx(x)+'<div style="text-align:right"><button class="danger" data-del-tx="'+esc(x.id)+'">Удалить</button></div>').join(''):'<div class="empty">Операций пока нет.</div>';accountList.innerHTML=a.map(x=>'<div class="card"><div class="metric-label">'+esc(x.type)+'</div><h3>'+esc(x.name)+'</h3><div class="metric">'+money(balance(x,t,tr))+'</div><div class="foot">Начальный остаток: '+money(x.opening)+'</div></div>').join('')||'<div class="empty">Создай первый счёт.</div>';const opts=a.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');['txAccount','transferFrom','transferTo'].forEach(id=>{const el=document.getElementById(id),old=el.value;el.innerHTML=opts;if([...el.options].some(o=>o.value===old))el.value=old;});goalList.innerHTML=g.map(x=>{const p=Math.min(100,x.current/x.target*100);return '<div class="item" style="display:block"><div class="row"><strong>'+esc(x.name)+'</strong><button class="danger" data-del-goal="'+esc(x.id)+'">Удалить</button></div><div class="row muted"><span>'+money(x.current)+' из '+money(x.target)+'</span><span>'+p.toFixed(1)+'%</span></div><div class="progress"><span style="width:'+p+'%"></span></div></div>';}).join('')||'<div class="empty">Целей пока нет.</div>';}
+function renderMonthAnalytics(transactions){
+  const field=document.getElementById('monthFilter');
+  if(!field.value)field.value=today().slice(0,7);
+  const result=calculateMonthlyAnalytics(transactions,field.value);
+  document.getElementById('monthIncome').textContent=money(result.income);
+  document.getElementById('monthExpenses').textContent=money(result.expenses);
+  document.getElementById('monthNet').textContent=money(result.net);
+  document.getElementById('monthNet').className='metric '+(result.net>=0?'positive':'negative');
+  document.getElementById('monthCount').textContent=String(result.count);
+  document.getElementById('monthCategories').innerHTML=result.expensesByCategory.length
+    ?result.expensesByCategory.map(([name,value])=>'<div class="item"><span>'+esc(name)+'</span><strong>'+money(value)+'</strong></div>').join('')
+    :'<div class="empty">Расходов за этот месяц нет.</div>';
+  document.getElementById('monthInsight').textContent=result.count
+    ?'За месяц внесено '+result.count+' операций. '+(result.net>=0?'Доходы превышают расходы на '+money(result.net)+'.':'Расходы превышают доходы на '+money(-result.net)+'.')
+    :'За выбранный месяц операций нет.';
+}
+async function refresh(){const [a,t,tr,g]=await Promise.all(['accounts','transactions','transfers','goals'].map(all));renderMonthAnalytics(t);const totals=calculateFinancialTotals(a,t,tr);document.getElementById('balance').textContent=money(totals.balance);income.textContent=money(totals.income);expenses.textContent=money(totals.expenses);net.textContent=money(totals.net);const sorted=[...t].sort((x,y)=>(y.date||'').localeCompare(x.date||''));recent.innerHTML=sorted.length?sorted.slice(0,5).map(renderTx).join(''):'<div class="empty">Операций пока нет.</div>';txList.innerHTML=sorted.length?sorted.map(x=>renderTx(x)+'<div style="text-align:right"><button class="danger" data-del-tx="'+esc(x.id)+'">Удалить</button></div>').join(''):'<div class="empty">Операций пока нет.</div>';accountList.innerHTML=a.map(x=>'<div class="card"><div class="metric-label">'+esc(x.type)+'</div><h3>'+esc(x.name)+'</h3><div class="metric">'+money(balance(x,t,tr))+'</div><div class="foot">Начальный остаток: '+money(x.opening)+'</div></div>').join('')||'<div class="empty">Создай первый счёт.</div>';const opts=a.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');['txAccount','transferFrom','transferTo'].forEach(id=>{const el=document.getElementById(id),old=el.value;el.innerHTML=opts;if([...el.options].some(o=>o.value===old))el.value=old;});goalList.innerHTML=g.map(x=>{const p=calculateGoalProgress(x.current,x.target);return '<div class="item" style="display:block"><div class="row"><strong>'+esc(x.name)+'</strong><button class="danger" data-del-goal="'+esc(x.id)+'">Удалить</button></div><div class="row muted"><span>'+money(x.current)+' из '+money(x.target)+'</span><span>'+p.toFixed(1)+'%</span></div><div class="progress"><span style="width:'+p+'%"></span></div></div>';}).join('')||'<div class="empty">Целей пока нет.</div>';}
 document.getElementById('monthFilter').addEventListener('change',()=>refresh());
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.section').forEach(x=>x.classList.toggle('active',x.id===b.dataset.tab));});
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>document.querySelector('[data-tab="'+b.dataset.goto+'"]').click());
@@ -85,9 +107,45 @@ accountForm.onsubmit=async e=>{e.preventDefault();await add('accounts',{name:acc
 transferDate.value=today();transferForm.onsubmit=async e=>{e.preventDefault();const fromId=Number(transferFrom.value),toId=Number(transferTo.value),amount=Number(transferAmount.value);if(!fromId||!toId||fromId===toId||amount<=0){alert('Выбери два разных счёта и положительную сумму.');return;}const [a,t,tr]=await Promise.all(['accounts','transactions','transfers'].map(all));if(amount>balance(a.find(x=>x.id===fromId),t,tr)&&!confirm('Недостаточно средств по учёту. Всё равно перевести?'))return;await add('transfers',{fromId,toId,amount,date:transferDate.value});e.target.reset();transferDate.value=today();await refresh();};
 goalForm.onsubmit=async e=>{e.preventDefault();const target=Number(goalTarget.value),current=Number(goalCurrent.value);if(target<=0||current<0)return;await add('goals',{name:goalName.value.trim(),target,current});e.target.reset();goalCurrent.value=0;await refresh();};
 document.addEventListener('click',async e=>{const x=e.target;if(x.dataset.delTx&&confirm('Удалить операцию?')){await remove('transactions',x.dataset.delTx);await refresh();}if(x.dataset.delGoal&&confirm('Удалить цель?')){await remove('goals',x.dataset.delGoal);await refresh();}});
-function calcMove(){const v=id=>Math.max(0,Number(document.getElementById(id).value)||0),savings=v('moveSavings'),income=v('moveIncome'),monthly=v('moveRent')+v('moveFood')+v('moveTransport')+v('moveOther'),one=v('moveOneTime'),months=Math.min(24,v('moveReserveMonths')),required=one+monthly*months,net=income-monthly,gap=required-savings;document.getElementById('moveMonthlyCost').textContent=money(monthly);document.getElementById('moveMonthlyNet').textContent=money(net);document.getElementById('moveMonthlyNet').className='metric '+(net>=0?'positive':'negative');document.getElementById('moveRequired').textContent=money(required);document.getElementById('moveGap').textContent=gap>0?money(gap):'Запас '+money(-gap);document.getElementById('moveGap').className='metric '+(gap>0?'negative':'positive');let verdict;if(monthly===0&&one===0)verdict='Внеси расходы и разовые затраты — пока сценарий не заполнен.';else if(net<0)verdict='Доход ниже ежемесячных расходов. Без дополнительного источника денег этот сценарий неустойчив.';else if(gap>0)verdict='До стартовой суммы не хватает '+money(gap)+'. Сначала сформируй резерв и проверь реальную стоимость жилья.';else verdict='По введённым цифрам стартовая сумма покрыта. Проверь надёжность дохода и реалистичность расходов.';document.getElementById('moveVerdict').textContent=verdict;}
+function calcMove(){
+  const value=id=>Math.max(0,Number(document.getElementById(id).value)||0);
+  const result=calculateMoveScenario({
+    savings:value('moveSavings'),
+    expectedIncome:value('moveIncome'),
+    rent:value('moveRent'),
+    food:value('moveFood'),
+    transport:value('moveTransport'),
+    otherMonthly:value('moveOther'),
+    oneTime:value('moveOneTime'),
+    reserveMonths:value('moveReserveMonths')
+  });
+  document.getElementById('moveMonthlyCost').textContent=money(result.monthlyExpenses);
+  document.getElementById('moveMonthlyNet').textContent=money(result.monthlyNet);
+  document.getElementById('moveMonthlyNet').className='metric '+(result.monthlyNet>=0?'positive':'negative');
+  document.getElementById('moveRequired').textContent=money(result.required);
+  document.getElementById('moveGap').textContent=result.gap>0?money(result.gap):'Запас '+money(-result.gap);
+  document.getElementById('moveGap').className='metric '+(result.gap>0?'negative':'positive');
+  const verdicts={
+    incomplete:'Внеси расходы и разовые затраты — пока сценарий не заполнен.',
+    unsustainable:'Доход ниже ежемесячных расходов. Без дополнительного источника денег этот сценарий неустойчив.',
+    shortfall:'До стартовой суммы не хватает '+money(result.gap)+'. Сначала сформируй резерв и проверь реальную стоимость жилья.',
+    covered:'По введённым цифрам стартовая сумма покрыта. Проверь надёжность дохода и реалистичность расходов.'
+  };
+  document.getElementById('moveVerdict').textContent=verdicts[result.verdict];
+}
 document.getElementById('moveForm').addEventListener('submit',e=>{e.preventDefault();calcMove();});document.getElementById('moveForm').addEventListener('input',calcMove);
-function calc(){const sale=+saleEl.value||0,cost=+costEl.value||0,other=+otherEl.value||0,fee=+feeEl.value||0,p=sale-cost-other-sale*fee/100;marginEl.textContent=(sale?p/sale*100:0).toFixed(1)+'%';simProfit.textContent=money(p);simProfit.className='metric '+(p>=0?'positive':'negative');simExplain.textContent='Комиссия: '+money(sale*fee/100)+'. Налоги и неуказанные расходы не учтены.';}
+function calc(){
+  const result=calculateUnitEconomics({
+    sale:saleEl.value,
+    cost:costEl.value,
+    otherCosts:otherEl.value,
+    feePercent:feeEl.value
+  });
+  marginEl.textContent=result.marginPercent.toFixed(1)+'%';
+  simProfit.textContent=money(result.profit);
+  simProfit.className='metric '+(result.profit>=0?'positive':'negative');
+  simExplain.textContent='Комиссия: '+money(result.commission)+'. Налоги и неуказанные расходы не учтены.';
+}
 const saleEl=document.getElementById('sale'),costEl=document.getElementById('cost'),otherEl=document.getElementById('other'),feeEl=document.getElementById('fee'),marginEl=document.getElementById('simMargin');simForm.onsubmit=e=>{e.preventDefault();calc();};[saleEl,costEl,otherEl,feeEl].forEach(x=>x.oninput=calc);
 exportBtn.onclick=async()=>{const data={app:'Panacea Finance',version:2,exportedAt:new Date().toISOString()};for(const s of ['accounts','transactions','transfers','goals'])data[s]=await all(s);const a=document.createElement('a'),u=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.href=u;a.download='panacea-finance-backup.json';a.click();URL.revokeObjectURL(u);};
 importBtn.onclick=()=>importFile.click();importFile.onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>5*1024*1024)throw Error('Файл слишком большой (лимит 5 МБ).');const raw=JSON.parse(await f.text());const data=validateBackup(raw);if(!confirm('Импорт заменит текущие данные. Сначала будет проверен весь файл, затем изменения сохранятся одной транзакцией. Продолжить?'))return;await replaceAllStores(data);await refresh();alert('Импорт завершён. Текущие данные заменены успешно.');}catch(err){alert('Ошибка импорта: '+err.message);}finally{e.target.value='';}};
