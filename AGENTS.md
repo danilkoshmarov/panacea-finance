@@ -12,7 +12,7 @@ This is a personal finance and decision-support tool for one person. Optimize fo
 
 ## Technical baseline
 - Current app is a static, single-page HTML/CSS/JavaScript application.
-- Data is stored locally in IndexedDB. There is intentionally no server and no cloud synchronization.
+- Data is stored locally in IndexedDB through `src/data/indexeddb.js`; UI code must use the adapter API rather than opening IndexedDB transactions directly. There is intentionally no server and no cloud synchronization.
 - Keep the app easy to run as a static site. Do not add a framework, build system, database service, or dependency without explaining the concrete benefit and maintenance cost first.
 - Reuse established browser APIs and well-maintained libraries when they materially improve reliability; do not reinvent complex infrastructure.
 - Keep money calculations explicit. Distinguish revenue, expenses, cash balance, profit, margin, and transfers. Transfers between the owner's accounts are not income or expenses.
