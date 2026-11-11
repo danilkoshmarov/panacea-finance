@@ -1,6 +1,9 @@
 name: Deploy Panacea Finance
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -14,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-and-deploy:
+  test-build-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -32,6 +35,7 @@ jobs:
         run: npm run build
 
       - name: Deploy to Cloudflare Workers
+        if: github.event_name != 'pull_request'
         run: npx --yes wrangler@4.160.0 deploy --config wrangler.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
