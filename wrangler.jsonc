@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "panacea-finance",
+  "account_id": "0e8644548af14133f897a6dd60ea9956",
   "compatibility_date": "2026-11-10",
   "observability": {
     "enabled": true
