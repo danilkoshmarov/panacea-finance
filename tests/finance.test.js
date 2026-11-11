@@ -36,6 +36,19 @@ test('financial totals sum operation types and account balances', () => {
   assert.deepEqual(totals, { balance: 150, income: 80, expenses: 30, net: 50 });
 });
 
+test('sale revenue subtracts cost of goods sold from net result without reducing cash balance twice', () => {
+  const accounts = [{ id: 1, opening: 100, scope: 'business' }];
+  const transactions = [
+    { id: 1, accountId: 1, type: 'income', amount: 500, inventoryMovementType: 'sale', projectId: 7 }
+  ];
+  const movements = [{ type: 'sale', projectId: 7, cogs: 250, date: '2026-11-11' }];
+  const totals = calculateFinancialTotals(accounts, transactions, [], movements);
+  assert.deepEqual(totals, { balance: 600, income: 500, expenses: 250, net: 250 });
+  const scoped = calculateFinancialTotalsByScope(accounts, transactions, [], movements);
+  assert.equal(scoped.business.net, 250);
+  assert.equal(scoped.business.balance, 600);
+});
+
 test('monthly analytics filters by calendar month and groups expenses by category', () => {
   const transactions = [
     { date: '2026-11-02', type: 'income', amount: 100, category: 'Sales' },
