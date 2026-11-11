@@ -4,7 +4,7 @@
  */
 
 const DATABASE_NAME = 'panacea-finance';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const STORE_NAMES = ['accounts', 'transactions', 'transfers', 'goals'];
 
 let databasePromise;
@@ -36,12 +36,26 @@ export function openDatabase() {
   databasePromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
 
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = event => {
       const database = request.result;
       for (const name of STORE_NAMES) {
         if (!database.objectStoreNames.contains(name)) {
           database.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
         }
+      }
+      if (event.oldVersion < 2) {
+        const accounts = request.transaction.objectStore('accounts');
+        const cursorRequest = accounts.openCursor();
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
+          if (!cursor) return;
+          const account = cursor.value;
+          if (!['personal', 'business'].includes(account.scope)) {
+            account.scope = account.type === 'Оборотный капитал' ? 'business' : 'personal';
+            cursor.update(account);
+          }
+          cursor.continue();
+        };
       }
     };
 
