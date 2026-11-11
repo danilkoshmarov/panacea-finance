@@ -4,6 +4,7 @@ import {
   calculateAccountBalance,
   calculateFinancialTotals,
   calculateFinancialTotalsByScope,
+  calculateProjectTotals,
   calculateMonthlyAnalytics,
   calculateMoveScenario,
   calculateUnitEconomics,
@@ -97,4 +98,21 @@ test('legacy accounts without scope are classified safely', () => {
   const result = calculateFinancialTotalsByScope(accounts, [], []);
   assert.equal(result.business.balance, 100);
   assert.equal(result.personal.balance, 50);
+});
+
+
+test('project totals include only linked transactions on business accounts', () => {
+  const accounts = [
+    { id: 1, scope: 'business' },
+    { id: 2, scope: 'personal' }
+  ];
+  const transactions = [
+    { id: 1, projectId: 10, accountId: 1, type: 'income', amount: 1200 },
+    { id: 2, projectId: 10, accountId: 1, type: 'expense', amount: 450 },
+    { id: 3, projectId: 10, accountId: 2, type: 'income', amount: 900 },
+    { id: 4, projectId: 11, accountId: 1, type: 'income', amount: 500 }
+  ];
+  assert.deepEqual(calculateProjectTotals(10, transactions, accounts), {
+    income: 1200, expenses: 450, profit: 750, count: 2
+  });
 });
