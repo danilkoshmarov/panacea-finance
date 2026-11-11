@@ -4,8 +4,8 @@
  */
 
 const DATABASE_NAME = 'panacea-finance';
-const DATABASE_VERSION = 3;
-const STORE_NAMES = ['accounts', 'transactions', 'transfers', 'goals', 'projects'];
+const DATABASE_VERSION = 4;
+const STORE_NAMES = ['accounts', 'transactions', 'transfers', 'goals', 'projects', 'products', 'inventoryMovements'];
 
 let databasePromise;
 
@@ -105,6 +105,42 @@ export async function add(storeName, record) {
   const done = transactionDone(transaction);
   const [id] = await Promise.all([requestResult(transaction.objectStore(storeName).add(record)), done]);
   return id;
+}
+
+export async function put(storeName, record) {
+  assertStoreName(storeName);
+  const database = await getDatabase();
+  const transaction = database.transaction(storeName, 'readwrite');
+  const done = transactionDone(transaction);
+  const [id] = await Promise.all([requestResult(transaction.objectStore(storeName).put(record)), done]);
+  return id;
+}
+
+/**
+ * Atomically update stock, record the movement and record the matching cash
+ * transaction. A failed part aborts the entire IndexedDB transaction.
+ */
+export async function recordInventoryMovement({ product, movement, transactionRecord }) {
+  const database = await getDatabase();
+  const transaction = database.transaction(['products', 'inventoryMovements', 'transactions'], 'readwrite');
+  const done = transactionDone(transaction);
+  const productStore = transaction.objectStore('products');
+  const movementStore = transaction.objectStore('inventoryMovements');
+  const transactionStore = transaction.objectStore('transactions');
+  let transactionId;
+  let movementId;
+  const transactionRequest = transactionStore.add(transactionRecord);
+  transactionRequest.onsuccess = () => {
+    transactionId = transactionRequest.result;
+    movement.transactionId = transactionId;
+    const movementRequest = movementStore.add(movement);
+    movementRequest.onsuccess = () => { movementId = movementRequest.result; };
+    movementRequest.onerror = () => transaction.abort();
+  };
+  transactionRequest.onerror = () => transaction.abort();
+  productStore.put(product);
+  await done;
+  return { transactionId, movementId };
 }
 
 export async function remove(storeName, id) {
