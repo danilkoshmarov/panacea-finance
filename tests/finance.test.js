@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   calculateAccountBalance,
   calculateFinancialTotals,
+  calculateFinancialTotalsByScope,
   calculateMonthlyAnalytics,
   calculateMoveScenario,
   calculateUnitEconomics,
@@ -69,4 +70,31 @@ test('unit economics includes percentage commission in profit and margin', () =>
 test('goal progress is capped and handles invalid targets', () => {
   assert.equal(calculateGoalProgress(150, 100), 100);
   assert.equal(calculateGoalProgress(50, 0), 0);
+});
+
+test('personal and business finances stay separate while cross-scope transfers only move capital', () => {
+  const accounts = [
+    { id: 1, opening: 1000, scope: 'personal' },
+    { id: 2, opening: 500, scope: 'business' }
+  ];
+  const transactions = [
+    { accountId: 1, type: 'income', amount: 300 },
+    { accountId: 1, type: 'expense', amount: 100 },
+    { accountId: 2, type: 'income', amount: 800 },
+    { accountId: 2, type: 'expense', amount: 250 }
+  ];
+  const transfers = [{ fromId: 1, toId: 2, amount: 200 }];
+  const result = calculateFinancialTotalsByScope(accounts, transactions, transfers);
+  assert.deepEqual(result.personal, { balance: 1000, income: 300, expenses: 100, net: 200 });
+  assert.deepEqual(result.business, { balance: 1050, income: 800, expenses: 250, net: 550 });
+});
+
+test('legacy accounts without scope are classified safely', () => {
+  const accounts = [
+    { id: 1, opening: 100, type: 'Оборотный капитал' },
+    { id: 2, opening: 50, type: 'Банковская карта' }
+  ];
+  const result = calculateFinancialTotalsByScope(accounts, [], []);
+  assert.equal(result.business.balance, 100);
+  assert.equal(result.personal.balance, 50);
 });
