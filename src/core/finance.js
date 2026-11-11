@@ -122,15 +122,48 @@ export function calculateFinancialTotalsByScope(accounts = [], transactions = []
 
 
 /**
- * Calculate project-level business performance.
- * Only transactions on business accounts are included.
+ * Inventory value is an asset, not an expense.
  */
-export function calculateProjectTotals(projectId, transactions = [], accounts = []) {
+export function calculateInventoryValue(products = []) {
+  return products.reduce((total, product) => {
+    const quantity = Math.max(0, Number(product.quantity) || 0);
+    const averageCost = Math.max(0, Number(product.averageCost) || 0);
+    return total + quantity * averageCost;
+  }, 0);
+}
+
+/**
+ * Weighted-average cost keeps remaining stock valued consistently after purchases.
+ */
+export function calculateWeightedAverageCost(currentQuantity, currentAverageCost, addedQuantity, addedUnitCost) {
+  const q1 = Number(currentQuantity);
+  const c1 = Number(currentAverageCost);
+  const q2 = Number(addedQuantity);
+  const c2 = Number(addedUnitCost);
+  if (![q1, c1, q2, c2].every(Number.isFinite) || q1 < 0 || c1 < 0 || q2 <= 0 || c2 < 0) {
+    throw new Error('Invalid inventory cost inputs');
+  }
+  const totalQuantity = q1 + q2;
+  return totalQuantity === 0 ? 0 : ((q1 * c1) + (q2 * c2)) / totalQuantity;
+}
+
+/**
+ * Project P&L excludes inventory purchases from expenses and recognizes COGS
+ * only when the goods are sold.
+ */
+export function calculateProjectTotals(projectId, transactions = [], accounts = [], movements = []) {
   const businessAccountIds = new Set(accounts
     .filter(account => (account.scope || (account.type === 'Оборотный капитал' ? 'business' : 'personal')) === 'business')
     .map(account => account.id));
   const items = transactions.filter(item => item.projectId === projectId && businessAccountIds.has(item.accountId));
   const income = sum(items, item => item.type === 'income');
-  const expenses = sum(items, item => item.type === 'expense');
-  return { income, expenses, profit: income - expenses, count: items.length };
+  const expenses = sum(items, item => item.type === 'expense' && item.inventoryMovementType !== 'purchase');
+  const costOfGoodsSold = sum(movements, item => item.projectId === projectId && item.type === 'sale', item => item.cogs);
+  return {
+    income,
+    expenses,
+    costOfGoodsSold,
+    profit: income - expenses - costOfGoodsSold,
+    count: items.length
+  };
 }
