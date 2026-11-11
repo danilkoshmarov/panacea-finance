@@ -5,6 +5,8 @@ import {
   calculateFinancialTotals,
   calculateFinancialTotalsByScope,
   calculateProjectTotals,
+  calculateInventoryValue,
+  calculateWeightedAverageCost,
   calculateMonthlyAnalytics,
   calculateMoveScenario,
   calculateUnitEconomics,
@@ -114,7 +116,7 @@ test('project totals include only linked transactions on business accounts', () 
   ];
   const movements = [{ projectId: 10, type: 'sale', cogs: 300 }];
   assert.deepEqual(calculateProjectTotals(10, transactions, accounts, movements), {
-    income: 1200, expenses: 0, costOfGoodsSold: 300, profit: 900, count: 2
+    income: 1200, expenses: 450, costOfGoodsSold: 300, profit: 450, count: 2
   });
 });
 
