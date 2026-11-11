@@ -38,7 +38,7 @@ function validateBackup(data){
   if(![1,2,3,4].includes(data.version))fail('Версия резервной копии не поддерживается.');
   const names=['accounts','transactions','goals'];
   for(const name of names)if(!Array.isArray(data[name]))fail('В резервной копии отсутствует раздел: '+name);
-  if(data.transfers!==undefined&&!Array.isArray(data.transfers))fail('Раздел переводов повреждён.');
+  if(data.transfers!==undefined&&!Array.isArray(data.transfers))fail('Раздел переводов повреждён.');if(data.projects!==undefined&&!Array.isArray(data.projects))fail('Раздел бизнес-проектов повреждён.');
   const normalized={accounts:data.accounts.map(a=>({...a,scope:a.scope??(a.type==='Оборотный капитал'?'business':'personal')})),transactions:data.transactions,transfers:data.transfers??[],goals:data.goals,projects:data.projects??[]};
   const idSet={};
   for(const name of ['accounts','transactions','transfers','goals','projects']){
