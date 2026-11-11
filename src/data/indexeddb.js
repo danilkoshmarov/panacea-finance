@@ -143,6 +143,49 @@ export async function recordInventoryMovement({ product, movement, transactionRe
   return { transactionId, movementId };
 }
 
+/**
+ * Add already-owned stock without recording a cash expense.
+ * Opening inventory is an asset brought into the ledger, not a new purchase.
+ */
+export async function recordOpeningInventoryMovement({ product, movement }) {
+  const database = await getDatabase();
+  const transaction = database.transaction(['products', 'inventoryMovements'], 'readwrite');
+  const done = transactionDone(transaction);
+  transaction.objectStore('products').put(product);
+  const movementId = await requestResult(transaction.objectStore('inventoryMovements').add(movement));
+  await done;
+  return { movementId };
+}
+
+/**
+ * Reclassify an incorrectly entered historical purchase as opening stock.
+ * Keeps its quantity and cost in the inventory ledger, but removes the
+ * linked false cash-expense transaction atomically.
+ */
+export async function reclassifyPurchaseAsOpening(movementId) {
+  const database = await getDatabase();
+  const transaction = database.transaction(['inventoryMovements', 'transactions'], 'readwrite');
+  const done = transactionDone(transaction);
+  const movementStore = transaction.objectStore('inventoryMovements');
+  const request = movementStore.get(Number(movementId));
+  let updatedMovement;
+  request.onsuccess = () => {
+    const movement = request.result;
+    if (!movement || movement.type !== 'purchase' || !Number.isSafeInteger(movement.transactionId)) {
+      transaction.abort();
+      return;
+    }
+    updatedMovement = { ...movement, type: 'opening', unitPrice: 0, cogs: 0 };
+    delete updatedMovement.accountId;
+    delete updatedMovement.transactionId;
+    transaction.objectStore('transactions').delete(movement.transactionId);
+    movementStore.put(updatedMovement);
+  };
+  request.onerror = () => transaction.abort();
+  await done;
+  return updatedMovement;
+}
+
 export async function remove(storeName, id) {
   assertStoreName(storeName);
   const database = await getDatabase();
