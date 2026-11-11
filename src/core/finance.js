@@ -163,7 +163,7 @@ export function calculateProjectTotals(projectId, transactions = [], accounts = 
   const businessAccountIds = new Set(accounts
     .filter(account => (account.scope || (account.type === 'Оборотный капитал' ? 'business' : 'personal')) === 'business')
     .map(account => account.id));
-  const items = transactions.filter(item => item.projectId === projectId && businessAccountIds.has(item.accountId));
+  const items = transactions.filter(item => !item.voided && item.projectId === projectId && businessAccountIds.has(item.accountId));
   const income = sum(items, item => item.type === 'income');
   const expenses = sum(items, item => !item.voided && item.type === 'expense' && item.inventoryMovementType !== 'purchase');
   const costOfGoodsSold = sum(movements, item => item.projectId === projectId && item.type === 'sale' && !item.voided, item => item.cogs);
