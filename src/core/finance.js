@@ -100,3 +100,22 @@ export function calculateGoalProgress(current, target) {
   if (goal <= 0) return 0;
   return Math.min(100, (Math.max(0, Number(current) || 0) / goal) * 100);
 }
+
+/**
+ * Split balances and transaction totals by account purpose.
+ * Transactions inherit their classification from the account they use.
+ * Transfers between personal and business accounts move capital between
+ * scopes without being counted as income or expenses.
+ */
+export function calculateFinancialTotalsByScope(accounts = [], transactions = [], transfers = []) {
+  const result = {};
+  for (const scope of ['personal', 'business']) {
+    const scopedAccounts = accounts.filter(account =>
+      (account.scope || (account.type === 'Оборотный капитал' ? 'business' : 'personal')) === scope
+    );
+    const accountIds = new Set(scopedAccounts.map(account => account.id));
+    const scopedTransactions = transactions.filter(item => accountIds.has(item.accountId));
+    result[scope] = calculateFinancialTotals(scopedAccounts, scopedTransactions, transfers);
+  }
+  return result;
+}
