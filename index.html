@@ -192,16 +192,29 @@ function validateBackup(data){
   const stockByProduct=new Map(normalized.products.map(p=>[p.id,0]));
   const linkedTransactionIds=new Set();
   const ledgerByProduct=new Map(normalized.products.map(p=>[p.id,{quantity:0,averageCost:0}]));
+  const reversedSaleIds=new Set();
   const orderedMovements=[...normalized.inventoryMovements].sort((a,b)=>a.id-b.id);
   for(const movement of orderedMovements){
     const product=normalized.products.find(p=>p.id===movement.productId);
     const isOpening=movement.type==='opening';
-    const account=isOpening?null:normalized.accounts.find(a=>a.id===movement.accountId);
+    const isReversal=movement.type==='sale_reversal';
+    const account=(isOpening||isReversal)?null:normalized.accounts.find(a=>a.id===movement.accountId);
     const tx=movement.transactionId===undefined?undefined:transactionsById.get(movement.transactionId);
     const ledger=ledgerByProduct.get(movement.productId);
-    if(!['opening','purchase','sale'].includes(movement.type)||!product||!projectIds.has(movement.projectId)||product.projectId!==movement.projectId||!Number.isFinite(movement.quantity)||movement.quantity<=0||!Number.isFinite(movement.unitCost)||movement.unitCost<=0||!Number.isFinite(movement.unitPrice)||movement.unitPrice<0||!Number.isFinite(movement.total)||movement.total<=0||!Number.isFinite(movement.cogs)||movement.cogs<0||!validDate(movement.date))fail('Некорректная запись движения товара.');
+    if(!['opening','purchase','sale','sale_reversal'].includes(movement.type)||!product||!projectIds.has(movement.projectId)||product.projectId!==movement.projectId||!Number.isFinite(movement.quantity)||movement.quantity<=0||!Number.isFinite(movement.unitCost)||movement.unitCost<=0||!Number.isFinite(movement.unitPrice)||movement.unitPrice<0||!Number.isFinite(movement.total)||movement.total<=0||!Number.isFinite(movement.cogs)||movement.cogs<0||!validDate(movement.date))fail('Некорректная запись движения товара.');
     if(isOpening){
       if(movement.accountId!==undefined||movement.transactionId!==undefined||tx||movement.unitPrice!==0||Math.abs(movement.total-movement.quantity*movement.unitCost)>0.01||movement.cogs!==0)fail('Некорректная запись начальных остатков.');
+      const nextQuantity=ledger.quantity+movement.quantity;
+      ledger.averageCost=((ledger.quantity*ledger.averageCost)+(movement.quantity*movement.unitCost))/nextQuantity;
+      ledger.quantity=nextQuantity;
+      stockByProduct.set(product.id,stockByProduct.get(product.id)+movement.quantity);
+      continue;
+    }
+    if(isReversal){
+      const original=normalized.inventoryMovements.find(item=>item.id===movement.originalMovementId);
+      const originalTx=original?transactionsById.get(original.transactionId):undefined;
+      if(!original||original.type!=='sale'||!original.voided||!originalTx?.voided||original.productId!==movement.productId||original.projectId!==movement.projectId||reversedSaleIds.has(original.id)||movement.accountId!==undefined||movement.transactionId!==undefined||movement.unitPrice!==0||movement.cogs!==0||Math.abs(movement.quantity-original.quantity)>0.000001||Math.abs(movement.total-original.cogs)>0.01||Math.abs(movement.total-movement.quantity*movement.unitCost)>0.01||Math.abs(movement.unitCost-original.unitCost)>0.01)fail('Некорректная запись отмены продажи.');
+      reversedSaleIds.add(original.id);
       const nextQuantity=ledger.quantity+movement.quantity;
       ledger.averageCost=((ledger.quantity*ledger.averageCost)+(movement.quantity*movement.unitCost))/nextQuantity;
       ledger.quantity=nextQuantity;
@@ -223,6 +236,7 @@ function validateBackup(data){
       stockByProduct.set(product.id,stockByProduct.get(product.id)-movement.quantity);
     }
   }
+  for(const movement of normalized.inventoryMovements){if(movement.type==='sale'&&movement.voided&&!reversedSaleIds.has(movement.id))fail('Для отменённой продажи отсутствует возврат товара в историю склада.');}
   for(const product of normalized.products){const ledger=ledgerByProduct.get(product.id);if(Math.abs((stockByProduct.get(product.id)||0)-product.quantity)>0.001||Math.abs(ledger.averageCost-product.averageCost)>0.01)fail('Остаток или себестоимость товара не совпадает с историей движения.');}
   for(const tx of normalized.transactions){if(tx.inventoryMovementType&&!linkedTransactionIds.has(tx.id))fail('Найдена товарная операция без складского движения.');if(tx.inventoryMovementType&&!['purchase','sale'].includes(tx.inventoryMovementType))fail('Неизвестный тип товарной операции.');}
   for(const t of normalized.transfers){
