@@ -158,3 +158,36 @@ test('project profit recognizes cost of goods sold, not all purchases', () => {
     income: 1800, expenses: 100, costOfGoodsSold: 600, profit: 1100, count: 3
   });
 });
+
+
+test('voided sale is excluded from balances, revenue, COGS and project profit', () => {
+  const accounts = [{ id: 1, opening: 100, scope: 'business' }];
+  const transactions = [
+    { id: 1, accountId: 1, type: 'income', amount: 500, projectId: 7, voided: true },
+    { id: 2, accountId: 1, type: 'income', amount: 200, projectId: 7 }
+  ];
+  const movements = [
+    { type: 'sale', projectId: 7, cogs: 250, voided: true },
+    { type: 'sale', projectId: 7, cogs: 100 }
+  ];
+  const totals = calculateFinancialTotals(accounts, transactions, [], movements);
+  assert.deepEqual(totals, { balance: 300, income: 200, expenses: 100, net: 100 });
+  const project = calculateProjectTotals(7, transactions, accounts, movements);
+  assert.deepEqual(project, { income: 200, expenses: 0, costOfGoodsSold: 100, profit: 100, count: 1 });
+});
+
+test('monthly analytics excludes voided sale transactions and their cost of goods sold', () => {
+  const transactions = [
+    { date: '2026-11-11', type: 'income', amount: 500, voided: true },
+    { date: '2026-11-11', type: 'income', amount: 200 }
+  ];
+  const movements = [
+    { date: '2026-11-11', type: 'sale', cogs: 250, voided: true },
+    { date: '2026-11-11', type: 'sale', cogs: 100 }
+  ];
+  const result = calculateMonthlyAnalytics(transactions, '2026-11', movements);
+  assert.equal(result.income, 200);
+  assert.equal(result.expenses, 100);
+  assert.equal(result.net, 100);
+  assert.equal(result.count, 1);
+});
