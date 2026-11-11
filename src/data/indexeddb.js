@@ -4,8 +4,8 @@
  */
 
 const DATABASE_NAME = 'panacea-finance';
-const DATABASE_VERSION = 2;
-const STORE_NAMES = ['accounts', 'transactions', 'transfers', 'goals'];
+const DATABASE_VERSION = 3;
+const STORE_NAMES = ['accounts', 'transactions', 'transfers', 'goals', 'projects'];
 
 let databasePromise;
 
