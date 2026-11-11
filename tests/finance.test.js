@@ -112,7 +112,34 @@ test('project totals include only linked transactions on business accounts', () 
     { id: 3, projectId: 10, accountId: 2, type: 'income', amount: 900 },
     { id: 4, projectId: 11, accountId: 1, type: 'income', amount: 500 }
   ];
-  assert.deepEqual(calculateProjectTotals(10, transactions, accounts), {
-    income: 1200, expenses: 450, profit: 750, count: 2
+  const movements = [{ projectId: 10, type: 'sale', cogs: 300 }];
+  assert.deepEqual(calculateProjectTotals(10, transactions, accounts, movements), {
+    income: 1200, expenses: 0, costOfGoodsSold: 300, profit: 900, count: 2
+  });
+});
+
+
+test('weighted average cost recalculates after a new purchase', () => {
+  assert.equal(calculateWeightedAverageCost(10, 100, 10, 160), 130);
+  assert.equal(calculateWeightedAverageCost(0, 0, 5, 75), 75);
+});
+
+test('inventory is valued as an asset at weighted average cost', () => {
+  assert.equal(calculateInventoryValue([
+    { quantity: 4, averageCost: 250 },
+    { quantity: 3, averageCost: 100 }
+  ]), 1300);
+});
+
+test('project profit recognizes cost of goods sold, not all purchases', () => {
+  const accounts = [{ id: 1, scope: 'business' }];
+  const transactions = [
+    { projectId: 10, accountId: 1, type: 'expense', amount: 1000, inventoryMovementType: 'purchase' },
+    { projectId: 10, accountId: 1, type: 'income', amount: 1800, inventoryMovementType: 'sale' },
+    { projectId: 10, accountId: 1, type: 'expense', amount: 100, category: 'Delivery' }
+  ];
+  const movements = [{ projectId: 10, type: 'sale', cogs: 600 }];
+  assert.deepEqual(calculateProjectTotals(10, transactions, accounts, movements), {
+    income: 1800, expenses: 100, costOfGoodsSold: 600, profit: 1100, count: 3
   });
 });
