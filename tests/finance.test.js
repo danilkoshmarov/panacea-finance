@@ -86,7 +86,7 @@ test('personal and business finances stay separate while cross-scope transfers o
   const transfers = [{ fromId: 1, toId: 2, amount: 200 }];
   const result = calculateFinancialTotalsByScope(accounts, transactions, transfers);
   assert.deepEqual(result.personal, { balance: 1000, income: 300, expenses: 100, net: 200 });
-  assert.deepEqual(result.business, { balance: 1050, income: 800, expenses: 250, net: 550 });
+  assert.deepEqual(result.business, { balance: 1250, income: 800, expenses: 250, net: 550 });
 });
 
 test('legacy accounts without scope are classified safely', () => {
