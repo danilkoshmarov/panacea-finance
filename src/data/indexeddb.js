@@ -186,6 +186,81 @@ export async function reclassifyPurchaseAsOpening(movementId) {
   return updatedMovement;
 }
 
+/**
+ * Cancel a sale atomically: restore stock, void the linked cash transaction,
+ * mark the original movement as cancelled and append an audit movement.
+ * Nothing is physically deleted, so the inventory trail remains explainable.
+ */
+export async function cancelSale(movementId) {
+  const database = await getDatabase();
+  const transaction = database.transaction(['products', 'inventoryMovements', 'transactions'], 'readwrite');
+  const done = transactionDone(transaction);
+  const movements = transaction.objectStore('inventoryMovements');
+  const products = transaction.objectStore('products');
+  const transactions = transaction.objectStore('transactions');
+
+  const saleRequest = movements.get(Number(movementId));
+  saleRequest.onsuccess = () => {
+    const sale = saleRequest.result;
+    if (!sale || sale.type !== 'sale' || sale.voided || !Number.isSafeInteger(sale.transactionId)) {
+      transaction.abort();
+      return;
+    }
+
+    const productRequest = products.get(Number(sale.productId));
+    productRequest.onsuccess = () => {
+      const product = productRequest.result;
+      if (!product || !Number.isFinite(Number(sale.quantity)) || Number(sale.quantity) <= 0) {
+        transaction.abort();
+        return;
+      }
+
+      const cashRequest = transactions.get(Number(sale.transactionId));
+      cashRequest.onsuccess = () => {
+        const cashRecord = cashRequest.result;
+        if (!cashRecord || cashRecord.voided) {
+          transaction.abort();
+          return;
+        }
+
+        const restoredQuantity = Number(sale.quantity);
+        const restoredCost = Number(sale.cogs) || restoredQuantity * (Number(sale.unitCost) || 0);
+        const currentQuantity = Math.max(0, Number(product.quantity) || 0);
+        const currentValue = currentQuantity * Math.max(0, Number(product.averageCost) || 0);
+        const nextQuantity = currentQuantity + restoredQuantity;
+        const nextAverageCost = nextQuantity > 0
+          ? (currentValue + restoredCost) / nextQuantity
+          : 0;
+
+        const cancelledAt = new Date().toISOString();
+        movements.put({ ...sale, voided: true, cancelledAt });
+        transactions.put({ ...cashRecord, voided: true, voidedAt: cancelledAt });
+        products.put({ ...product, quantity: nextQuantity, averageCost: nextAverageCost });
+        movements.add({
+          type: 'sale_reversal',
+          productId: sale.productId,
+          projectId: sale.projectId,
+          quantity: restoredQuantity,
+          unitCost: restoredQuantity ? restoredCost / restoredQuantity : 0,
+          unitPrice: 0,
+          total: restoredCost,
+          cogs: 0,
+          date: cancelledAt.slice(0, 10),
+          originalMovementId: sale.id,
+          note: 'Отмена продажи',
+          createdAt: cancelledAt
+        });
+      };
+      cashRequest.onerror = () => transaction.abort();
+    };
+    productRequest.onerror = () => transaction.abort();
+  };
+  saleRequest.onerror = () => transaction.abort();
+
+  await done;
+  return { movementId: Number(movementId), cancelled: true };
+}
+
 export async function remove(storeName, id) {
   assertStoreName(storeName);
   const database = await getDatabase();
