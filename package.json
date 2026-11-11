@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node scripts/check-inline-script.js"
+    "check": "node scripts/check-inline-script.js",
+    "build": "node scripts/build.mjs"
   }
 }
