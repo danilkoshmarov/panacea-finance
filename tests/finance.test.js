@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import {
   calculateAccountBalance,
   calculateFinancialTotals,
+  calculateFinancialTotalsByScope,
+  calculateProjectTotals,
+  calculateInventoryValue,
+  calculateWeightedAverageCost,
   calculateMonthlyAnalytics,
   calculateMoveScenario,
   calculateUnitEconomics,
@@ -69,4 +73,75 @@ test('unit economics includes percentage commission in profit and margin', () =>
 test('goal progress is capped and handles invalid targets', () => {
   assert.equal(calculateGoalProgress(150, 100), 100);
   assert.equal(calculateGoalProgress(50, 0), 0);
+});
+
+test('personal and business finances stay separate while cross-scope transfers only move capital', () => {
+  const accounts = [
+    { id: 1, opening: 1000, scope: 'personal' },
+    { id: 2, opening: 500, scope: 'business' }
+  ];
+  const transactions = [
+    { accountId: 1, type: 'income', amount: 300 },
+    { accountId: 1, type: 'expense', amount: 100 },
+    { accountId: 2, type: 'income', amount: 800 },
+    { accountId: 2, type: 'expense', amount: 250 }
+  ];
+  const transfers = [{ fromId: 1, toId: 2, amount: 200 }];
+  const result = calculateFinancialTotalsByScope(accounts, transactions, transfers);
+  assert.deepEqual(result.personal, { balance: 1000, income: 300, expenses: 100, net: 200 });
+  assert.deepEqual(result.business, { balance: 1250, income: 800, expenses: 250, net: 550 });
+});
+
+test('legacy accounts without scope are classified safely', () => {
+  const accounts = [
+    { id: 1, opening: 100, type: 'Оборотный капитал' },
+    { id: 2, opening: 50, type: 'Банковская карта' }
+  ];
+  const result = calculateFinancialTotalsByScope(accounts, [], []);
+  assert.equal(result.business.balance, 100);
+  assert.equal(result.personal.balance, 50);
+});
+
+
+test('project totals include only linked transactions on business accounts', () => {
+  const accounts = [
+    { id: 1, scope: 'business' },
+    { id: 2, scope: 'personal' }
+  ];
+  const transactions = [
+    { id: 1, projectId: 10, accountId: 1, type: 'income', amount: 1200 },
+    { id: 2, projectId: 10, accountId: 1, type: 'expense', amount: 450 },
+    { id: 3, projectId: 10, accountId: 2, type: 'income', amount: 900 },
+    { id: 4, projectId: 11, accountId: 1, type: 'income', amount: 500 }
+  ];
+  const movements = [{ projectId: 10, type: 'sale', cogs: 300 }];
+  assert.deepEqual(calculateProjectTotals(10, transactions, accounts, movements), {
+    income: 1200, expenses: 450, costOfGoodsSold: 300, profit: 450, count: 2
+  });
+});
+
+
+test('weighted average cost recalculates after a new purchase', () => {
+  assert.equal(calculateWeightedAverageCost(10, 100, 10, 160), 130);
+  assert.equal(calculateWeightedAverageCost(0, 0, 5, 75), 75);
+});
+
+test('inventory is valued as an asset at weighted average cost', () => {
+  assert.equal(calculateInventoryValue([
+    { quantity: 4, averageCost: 250 },
+    { quantity: 3, averageCost: 100 }
+  ]), 1300);
+});
+
+test('project profit recognizes cost of goods sold, not all purchases', () => {
+  const accounts = [{ id: 1, scope: 'business' }];
+  const transactions = [
+    { projectId: 10, accountId: 1, type: 'expense', amount: 1000, inventoryMovementType: 'purchase' },
+    { projectId: 10, accountId: 1, type: 'income', amount: 1800, inventoryMovementType: 'sale' },
+    { projectId: 10, accountId: 1, type: 'expense', amount: 100, category: 'Delivery' }
+  ];
+  const movements = [{ projectId: 10, type: 'sale', cogs: 600 }];
+  assert.deepEqual(calculateProjectTotals(10, transactions, accounts, movements), {
+    income: 1800, expenses: 100, costOfGoodsSold: 600, profit: 1100, count: 3
+  });
 });

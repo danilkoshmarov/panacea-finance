@@ -100,3 +100,70 @@ export function calculateGoalProgress(current, target) {
   if (goal <= 0) return 0;
   return Math.min(100, (Math.max(0, Number(current) || 0) / goal) * 100);
 }
+
+/**
+ * Split balances and transaction totals by account purpose.
+ * Transactions inherit their classification from the account they use.
+ * Transfers between personal and business accounts move capital between
+ * scopes without being counted as income or expenses.
+ */
+export function calculateFinancialTotalsByScope(accounts = [], transactions = [], transfers = []) {
+  const result = {};
+  for (const scope of ['personal', 'business']) {
+    const scopedAccounts = accounts.filter(account =>
+      (account.scope || (account.type === 'Оборотный капитал' ? 'business' : 'personal')) === scope
+    );
+    const accountIds = new Set(scopedAccounts.map(account => account.id));
+    const scopedTransactions = transactions.filter(item => accountIds.has(item.accountId));
+    result[scope] = calculateFinancialTotals(scopedAccounts, scopedTransactions, transfers);
+  }
+  return result;
+}
+
+
+/**
+ * Inventory value is an asset, not an expense.
+ */
+export function calculateInventoryValue(products = []) {
+  return products.reduce((total, product) => {
+    const quantity = Math.max(0, Number(product.quantity) || 0);
+    const averageCost = Math.max(0, Number(product.averageCost) || 0);
+    return total + quantity * averageCost;
+  }, 0);
+}
+
+/**
+ * Weighted-average cost keeps remaining stock valued consistently after purchases.
+ */
+export function calculateWeightedAverageCost(currentQuantity, currentAverageCost, addedQuantity, addedUnitCost) {
+  const q1 = Number(currentQuantity);
+  const c1 = Number(currentAverageCost);
+  const q2 = Number(addedQuantity);
+  const c2 = Number(addedUnitCost);
+  if (![q1, c1, q2, c2].every(Number.isFinite) || q1 < 0 || c1 < 0 || q2 <= 0 || c2 < 0) {
+    throw new Error('Invalid inventory cost inputs');
+  }
+  const totalQuantity = q1 + q2;
+  return totalQuantity === 0 ? 0 : ((q1 * c1) + (q2 * c2)) / totalQuantity;
+}
+
+/**
+ * Project P&L excludes inventory purchases from expenses and recognizes COGS
+ * only when the goods are sold.
+ */
+export function calculateProjectTotals(projectId, transactions = [], accounts = [], movements = []) {
+  const businessAccountIds = new Set(accounts
+    .filter(account => (account.scope || (account.type === 'Оборотный капитал' ? 'business' : 'personal')) === 'business')
+    .map(account => account.id));
+  const items = transactions.filter(item => item.projectId === projectId && businessAccountIds.has(item.accountId));
+  const income = sum(items, item => item.type === 'income');
+  const expenses = sum(items, item => item.type === 'expense' && item.inventoryMovementType !== 'purchase');
+  const costOfGoodsSold = sum(movements, item => item.projectId === projectId && item.type === 'sale', item => item.cogs);
+  return {
+    income,
+    expenses,
+    costOfGoodsSold,
+    profit: income - expenses - costOfGoodsSold,
+    count: items.length
+  };
+}
