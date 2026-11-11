@@ -16,20 +16,25 @@ export function calculateAccountBalance(account, transactions = [], transfers = 
   return opening + income - expenses + incoming - outgoing;
 }
 
-export function calculateFinancialTotals(accounts = [], transactions = [], transfers = []) {
+export function calculateFinancialTotals(accounts = [], transactions = [], transfers = [], movements = []) {
   const balance = accounts.reduce(
     (total, account) => total + calculateAccountBalance(account, transactions, transfers),
     0
   );
   const income = sum(transactions, item => item.type === 'income');
-  const expenses = sum(transactions, item => item.type === 'expense');
+  const operatingExpenses = sum(transactions, item => item.type === 'expense');
+  const costOfGoodsSold = sum(movements, item => item.type === 'sale', item => Number(item.cogs) || 0);
+  const expenses = operatingExpenses + costOfGoodsSold;
   return { balance, income, expenses, net: income - expenses };
 }
 
-export function calculateMonthlyAnalytics(transactions = [], month) {
+export function calculateMonthlyAnalytics(transactions = [], month, movements = []) {
   const items = transactions.filter(item => (item.date || '').slice(0, 7) === month);
+  const monthMovements = movements.filter(item => item.type === 'sale' && (item.date || '').slice(0, 7) === month);
   const income = sum(items, item => item.type === 'income');
-  const expenses = sum(items, item => item.type === 'expense');
+  const operatingExpenses = sum(items, item => item.type === 'expense');
+  const costOfGoodsSold = sum(monthMovements, item => true, item => Number(item.cogs) || 0);
+  const expenses = operatingExpenses + costOfGoodsSold;
   const expensesByCategory = {};
   for (const item of items) {
     if (item.type === 'expense') {
@@ -37,6 +42,7 @@ export function calculateMonthlyAnalytics(transactions = [], month) {
       expensesByCategory[category] = (expensesByCategory[category] || 0) + item.amount;
     }
   }
+  if (costOfGoodsSold) expensesByCategory['Себестоимость проданного'] = costOfGoodsSold;
   return {
     month,
     items,
@@ -107,7 +113,7 @@ export function calculateGoalProgress(current, target) {
  * Transfers between personal and business accounts move capital between
  * scopes without being counted as income or expenses.
  */
-export function calculateFinancialTotalsByScope(accounts = [], transactions = [], transfers = []) {
+export function calculateFinancialTotalsByScope(accounts = [], transactions = [], transfers = [], movements = []) {
   const result = {};
   for (const scope of ['personal', 'business']) {
     const scopedAccounts = accounts.filter(account =>
@@ -115,7 +121,9 @@ export function calculateFinancialTotalsByScope(accounts = [], transactions = []
     );
     const accountIds = new Set(scopedAccounts.map(account => account.id));
     const scopedTransactions = transactions.filter(item => accountIds.has(item.accountId));
-    result[scope] = calculateFinancialTotals(scopedAccounts, scopedTransactions, transfers);
+    const scopedProjectIds = new Set(scopedTransactions.map(item => item.projectId).filter(id => id !== undefined));
+    const scopedMovements = movements.filter(item => scopedProjectIds.has(item.projectId));
+    result[scope] = calculateFinancialTotals(scopedAccounts, scopedTransactions, transfers, scopedMovements);
   }
   return result;
 }
