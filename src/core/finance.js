@@ -119,3 +119,18 @@ export function calculateFinancialTotalsByScope(accounts = [], transactions = []
   }
   return result;
 }
+
+
+/**
+ * Calculate project-level business performance.
+ * Only transactions on business accounts are included.
+ */
+export function calculateProjectTotals(projectId, transactions = [], accounts = []) {
+  const businessAccountIds = new Set(accounts
+    .filter(account => (account.scope || (account.type === 'Оборотный капитал' ? 'business' : 'personal')) === 'business')
+    .map(account => account.id));
+  const items = transactions.filter(item => item.projectId === projectId && businessAccountIds.has(item.accountId));
+  const income = sum(items, item => item.type === 'income');
+  const expenses = sum(items, item => item.type === 'expense');
+  return { income, expenses, profit: income - expenses, count: items.length };
+}
