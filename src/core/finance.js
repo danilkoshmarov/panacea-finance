@@ -9,7 +9,8 @@ const sum = (items, predicate, selector = item => item.amount) =>
 export function calculateAccountBalance(account, transactions = [], transfers = []) {
   if (!account) return 0;
   const opening = Number(account.opening) || 0;
-  const activeTransactions = transactions.filter(item => !item.voided);\n  const income = sum(activeTransactions, item => item.accountId === account.id && item.type === 'income');
+  const activeTransactions = transactions.filter(item => !item.voided);
+  const income = sum(activeTransactions, item => item.accountId === account.id && item.type === 'income');
   const expenses = sum(activeTransactions, item => item.accountId === account.id && item.type === 'expense');
   const incoming = sum(transfers, item => item.toId === account.id);
   const outgoing = sum(transfers, item => item.fromId === account.id);
@@ -21,7 +22,8 @@ export function calculateFinancialTotals(accounts = [], transactions = [], trans
     (total, account) => total + calculateAccountBalance(account, transactions, transfers),
     0
   );
-  const activeTransactions = transactions.filter(item => !item.voided);\n  const income = sum(activeTransactions, item => item.type === 'income');
+  const activeTransactions = transactions.filter(item => !item.voided);
+  const income = sum(activeTransactions, item => item.type === 'income');
   const operatingExpenses = sum(activeTransactions, item => item.type === 'expense');
   const costOfGoodsSold = sum(movements, item => item.type === 'sale' && !item.voided, item => Number(item.cogs) || 0);
   const expenses = operatingExpenses + costOfGoodsSold;
