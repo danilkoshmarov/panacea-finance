@@ -226,8 +226,8 @@ test('monthly analytics excludes stock purchases from profit expenses and catego
   assert.equal(result.expenses, 250);
   assert.equal(result.net, 250);
   assert.deepEqual(result.expensesByCategory, [
-    ['Доставка', 50],
-    ['Себестоимость проданного', 200]
+    ['Себестоимость проданного', 200],
+    ['Доставка', 50]
   ]);
   assert.equal(result.count, 3);
 });
