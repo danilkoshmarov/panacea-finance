@@ -191,3 +191,43 @@ test('monthly analytics excludes voided sale transactions and their cost of good
   assert.equal(result.net, 100);
   assert.equal(result.count, 1);
 });
+
+
+test('inventory purchases reduce cash but are not counted as profit expenses before sale', () => {
+  const accounts = [{ id: 1, opening: 2000, scope: 'business' }];
+  const transactions = [
+    { id: 1, accountId: 1, type: 'expense', amount: 1000, inventoryMovementType: 'purchase', projectId: 7, date: '2026-11-10' },
+    { id: 2, accountId: 1, type: 'income', amount: 500, inventoryMovementType: 'sale', projectId: 7, date: '2026-11-11' }
+  ];
+  const movements = [
+    { type: 'purchase', projectId: 7, total: 1000, cogs: 0, date: '2026-11-10' },
+    { type: 'sale', projectId: 7, total: 500, cogs: 200, date: '2026-11-11' }
+  ];
+  const totals = calculateFinancialTotals(accounts, transactions, [], movements);
+  assert.deepEqual(totals, { balance: 1500, income: 500, expenses: 200, net: 300 });
+  const scoped = calculateFinancialTotalsByScope(accounts, transactions, [], movements);
+  assert.equal(scoped.business.balance, 1500);
+  assert.equal(scoped.business.expenses, 200);
+  assert.equal(scoped.business.net, 300);
+});
+
+test('monthly analytics excludes stock purchases from profit expenses and categories', () => {
+  const transactions = [
+    { date: '2026-11-10', type: 'expense', amount: 1000, category: 'Закупка товара', inventoryMovementType: 'purchase' },
+    { date: '2026-11-11', type: 'income', amount: 500, category: 'Продажа товара', inventoryMovementType: 'sale' },
+    { date: '2026-11-12', type: 'expense', amount: 50, category: 'Доставка' }
+  ];
+  const movements = [
+    { date: '2026-11-10', type: 'purchase', cogs: 0 },
+    { date: '2026-11-11', type: 'sale', cogs: 200 }
+  ];
+  const result = calculateMonthlyAnalytics(transactions, '2026-11', movements);
+  assert.equal(result.income, 500);
+  assert.equal(result.expenses, 250);
+  assert.equal(result.net, 250);
+  assert.deepEqual(result.expensesByCategory, [
+    ['Себестоимость проданного', 200],
+    ['Доставка', 50]
+  ]);
+  assert.equal(result.count, 3);
+});
