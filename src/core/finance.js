@@ -24,7 +24,7 @@ export function calculateFinancialTotals(accounts = [], transactions = [], trans
   );
   const activeTransactions = transactions.filter(item => !item.voided);
   const income = sum(activeTransactions, item => item.type === 'income');
-  const operatingExpenses = sum(activeTransactions, item => item.type === 'expense');
+  const operatingExpenses = sum(activeTransactions, item => item.type === 'expense' && item.inventoryMovementType !== 'purchase');
   const costOfGoodsSold = sum(movements, item => item.type === 'sale' && !item.voided, item => Number(item.cogs) || 0);
   const expenses = operatingExpenses + costOfGoodsSold;
   return { balance, income, expenses, net: income - expenses };
@@ -34,12 +34,12 @@ export function calculateMonthlyAnalytics(transactions = [], month, movements = 
   const items = transactions.filter(item => !item.voided && (item.date || '').slice(0, 7) === month);
   const monthMovements = movements.filter(item => item.type === 'sale' && !item.voided && (item.date || '').slice(0, 7) === month);
   const income = sum(items, item => item.type === 'income');
-  const operatingExpenses = sum(items, item => item.type === 'expense');
+  const operatingExpenses = sum(items, item => item.type === 'expense' && item.inventoryMovementType !== 'purchase');
   const costOfGoodsSold = sum(monthMovements, item => true, item => Number(item.cogs) || 0);
   const expenses = operatingExpenses + costOfGoodsSold;
   const expensesByCategory = {};
   for (const item of items) {
-    if (item.type === 'expense') {
+    if (item.type === 'expense' && item.inventoryMovementType !== 'purchase') {
       const category = item.category || 'Без категории';
       expensesByCategory[category] = (expensesByCategory[category] || 0) + item.amount;
     }
