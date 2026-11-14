@@ -12,8 +12,9 @@ export function calculateAccountBalance(account, transactions = [], transfers = 
   const activeTransactions = transactions.filter(item => !item.voided);
   const income = sum(activeTransactions, item => item.accountId === account.id && item.type === 'income');
   const expenses = sum(activeTransactions, item => item.accountId === account.id && item.type === 'expense');
-  const incoming = sum(transfers, item => item.toId === account.id);
-  const outgoing = sum(transfers, item => item.fromId === account.id);
+  const activeTransfers = transfers.filter(item => !item.voided);
+  const incoming = sum(activeTransfers, item => item.toId === account.id);
+  const outgoing = sum(activeTransfers, item => item.fromId === account.id);
   return opening + income - expenses + incoming - outgoing;
 }
 
