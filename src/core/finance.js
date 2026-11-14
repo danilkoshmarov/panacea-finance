@@ -177,3 +177,43 @@ export function calculateProjectTotals(projectId, transactions = [], accounts = 
     count: items.length
   };
 }
+
+
+/**
+ * Validate every link before reversing a sale. This pure guard is shared by
+ * the IndexedDB adapter and unit tests so a mismatched cash record cannot be
+ * voided while restoring stock.
+ */
+export function validateSaleCancellation(sale, cashRecord, product, movements = []) {
+  const close = (a, b) => Number.isFinite(Number(a)) && Number.isFinite(Number(b)) &&
+    Math.abs(Number(a) - Number(b)) <= 0.01;
+  if (!sale || !Number.isSafeInteger(sale.id) || sale.type !== 'sale' || sale.voided ||
+      !Number.isSafeInteger(sale.transactionId) || !Number.isSafeInteger(sale.productId) ||
+      !Number.isSafeInteger(sale.projectId) || !Number.isSafeInteger(sale.accountId)) {
+    throw new Error('Invalid or already cancelled sale');
+  }
+  const quantity = Number(sale.quantity);
+  const unitCost = Number(sale.unitCost);
+  const unitPrice = Number(sale.unitPrice);
+  const total = Number(sale.total);
+  const cogs = Number(sale.cogs);
+  if (![quantity, unitCost, unitPrice, total, cogs].every(Number.isFinite) ||
+      quantity <= 0 || unitCost < 0 || unitPrice <= 0 || total <= 0 || cogs < 0 ||
+      !close(total, quantity * unitPrice) || !close(cogs, quantity * unitCost)) {
+    throw new Error('Sale amounts do not reconcile');
+  }
+  if (!product || product.id !== sale.productId || product.projectId !== sale.projectId ||
+      !Number.isFinite(Number(product.quantity)) || Number(product.quantity) < 0 ||
+      !Number.isFinite(Number(product.averageCost)) || Number(product.averageCost) < 0) {
+    throw new Error('Sale product does not match the current stock record');
+  }
+  if (!cashRecord || cashRecord.type !== 'income' || cashRecord.voided ||
+      cashRecord.accountId !== sale.accountId || cashRecord.projectId !== sale.projectId ||
+      cashRecord.inventoryMovementType !== 'sale' || !close(cashRecord.amount, total)) {
+    throw new Error('Linked income transaction does not match this sale');
+  }
+  if (movements.some(item => item.type === 'sale_reversal' && item.originalMovementId === sale.id)) {
+    throw new Error('This sale already has a stock reversal');
+  }
+  return { quantity, restoredCost: cogs };
+}
