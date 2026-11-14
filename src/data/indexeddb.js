@@ -1,4 +1,6 @@
-import { validateSaleCancellation } from '../core/finance.js';\n\n/**
+import { validateSaleCancellation } from '../core/finance.js';
+
+/**
  * IndexedDB adapter for Panacea Finance.
  * UI code depends on this small async API instead of managing transactions.
  */
