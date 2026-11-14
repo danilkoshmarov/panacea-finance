@@ -1,4 +1,4 @@
-/**
+import { validateSaleCancellation } from '../core/finance.js';\n\n/**
  * IndexedDB adapter for Panacea Finance.
  * UI code depends on this small async API instead of managing transactions.
  */
@@ -208,25 +208,21 @@ export async function cancelSale(movementId) {
     }
 
     const productRequest = products.get(Number(sale.productId));
-    productRequest.onsuccess = () => {
-      const product = productRequest.result;
-      if (!product || !Number.isFinite(Number(sale.quantity)) || Number(sale.quantity) <= 0) {
-        transaction.abort();
-        return;
-      }
-
-      const cashRequest = transactions.get(Number(sale.transactionId));
-      cashRequest.onsuccess = () => {
-        const cashRecord = cashRequest.result;
-        if (!cashRecord || cashRecord.voided) {
-          transaction.abort();
-          return;
-        }
-
-        const restoredQuantity = Number(sale.quantity);
-        const restoredCost = Number(sale.cogs) || restoredQuantity * (Number(sale.unitCost) || 0);
-        const currentQuantity = Math.max(0, Number(product.quantity) || 0);
-        const currentValue = currentQuantity * Math.max(0, Number(product.averageCost) || 0);
+    const cashRequest = transactions.get(Number(sale.transactionId));
+    const allMovementsRequest = movements.getAll();
+    let product;
+    let cashRecord;
+    let allMovements;
+    let productLoaded = false;
+    let cashLoaded = false;
+    let movementsLoaded = false;
+    const ready = () => {
+      if (!productLoaded || !cashLoaded || !movementsLoaded) return;
+      try {
+        const { quantity: restoredQuantity, restoredCost } =
+          validateSaleCancellation(sale, cashRecord, product, allMovements);
+        const currentQuantity = Number(product.quantity);
+        const currentValue = currentQuantity * Number(product.averageCost);
         const nextQuantity = currentQuantity + restoredQuantity;
         const nextAverageCost = nextQuantity > 0
           ? (currentValue + restoredCost) / nextQuantity
@@ -241,7 +237,7 @@ export async function cancelSale(movementId) {
           productId: sale.productId,
           projectId: sale.projectId,
           quantity: restoredQuantity,
-          unitCost: restoredQuantity ? restoredCost / restoredQuantity : 0,
+          unitCost: restoredCost / restoredQuantity,
           unitPrice: 0,
           total: restoredCost,
           cogs: 0,
@@ -250,10 +246,16 @@ export async function cancelSale(movementId) {
           note: 'Отмена продажи',
           createdAt: cancelledAt
         });
-      };
-      cashRequest.onerror = () => transaction.abort();
+      } catch {
+        transaction.abort();
+      }
     };
+    productRequest.onsuccess = () => { product = productRequest.result; productLoaded = true; ready(); };
+    cashRequest.onsuccess = () => { cashRecord = cashRequest.result; cashLoaded = true; ready(); };
+    allMovementsRequest.onsuccess = () => { allMovements = allMovementsRequest.result; movementsLoaded = true; ready(); };
     productRequest.onerror = () => transaction.abort();
+    cashRequest.onerror = () => transaction.abort();
+    allMovementsRequest.onerror = () => transaction.abort();
   };
   saleRequest.onerror = () => transaction.abort();
 

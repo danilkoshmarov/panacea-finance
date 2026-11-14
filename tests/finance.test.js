@@ -10,7 +10,8 @@ import {
   calculateMonthlyAnalytics,
   calculateMoveScenario,
   calculateUnitEconomics,
-  calculateGoalProgress
+  calculateGoalProgress,
+  validateSaleCancellation
 } from '../src/core/finance.js';
 
 test('account balance includes income, expenses and transfers without treating transfers as income', () => {
@@ -230,4 +231,42 @@ test('monthly analytics excludes stock purchases from profit expenses and catego
     ['Доставка', 50]
   ]);
   assert.equal(result.count, 3);
+});
+
+
+test('sale cancellation guard accepts a fully matching sale and linked income', () => {
+  const sale = { id: 11, type: 'sale', transactionId: 21, productId: 31, projectId: 41, accountId: 51, quantity: 2, unitCost: 100, unitPrice: 250, total: 500, cogs: 200 };
+  const cash = { id: 21, type: 'income', amount: 500, accountId: 51, projectId: 41, inventoryMovementType: 'sale' };
+  const product = { id: 31, projectId: 41, quantity: 3, averageCost: 100 };
+  assert.deepEqual(validateSaleCancellation(sale, cash, product, []), { quantity: 2, restoredCost: 200 });
+});
+
+test('sale cancellation guard rejects a linked transaction from another account', () => {
+  const sale = { id: 11, type: 'sale', transactionId: 21, productId: 31, projectId: 41, accountId: 51, quantity: 2, unitCost: 100, unitPrice: 250, total: 500, cogs: 200 };
+  const cash = { id: 21, type: 'income', amount: 500, accountId: 999, projectId: 41, inventoryMovementType: 'sale' };
+  const product = { id: 31, projectId: 41, quantity: 3, averageCost: 100 };
+  assert.throws(() => validateSaleCancellation(sale, cash, product, []), /does not match/);
+});
+
+test('sale cancellation guard rejects wrong transaction type, project, amount and missing inventory link', () => {
+  const sale = { id: 11, type: 'sale', transactionId: 21, productId: 31, projectId: 41, accountId: 51, quantity: 2, unitCost: 100, unitPrice: 250, total: 500, cogs: 200 };
+  const product = { id: 31, projectId: 41, quantity: 3, averageCost: 100 };
+  for (const patch of [
+    { type: 'expense' },
+    { projectId: 99 },
+    { amount: 499 },
+    { inventoryMovementType: undefined }
+  ]) {
+    const cash = { id: 21, type: 'income', amount: 500, accountId: 51, projectId: 41, inventoryMovementType: 'sale', ...patch };
+    assert.throws(() => validateSaleCancellation(sale, cash, product, []), /does not match/);
+  }
+});
+
+test('sale cancellation guard rejects mismatched sale math, product and an existing reversal', () => {
+  const sale = { id: 11, type: 'sale', transactionId: 21, productId: 31, projectId: 41, accountId: 51, quantity: 2, unitCost: 100, unitPrice: 250, total: 500, cogs: 200 };
+  const cash = { id: 21, type: 'income', amount: 500, accountId: 51, projectId: 41, inventoryMovementType: 'sale' };
+  const product = { id: 31, projectId: 41, quantity: 3, averageCost: 100 };
+  assert.throws(() => validateSaleCancellation({ ...sale, cogs: 300 }, cash, product, []), /amounts do not reconcile/);
+  assert.throws(() => validateSaleCancellation(sale, cash, { ...product, projectId: 99 }, []), /product does not match/);
+  assert.throws(() => validateSaleCancellation(sale, cash, product, [{ type: 'sale_reversal', originalMovementId: 11 }]), /already has/);
 });
