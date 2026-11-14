@@ -263,6 +263,32 @@ export async function cancelSale(movementId) {
   return { movementId: Number(movementId), cancelled: true };
 }
 
+/**
+ * Cancel a transfer without deleting its audit record.
+ * The single-record update is committed atomically by IndexedDB.
+ */
+export async function cancelTransfer(transferId) {
+  const database = await getDatabase();
+  const transaction = database.transaction('transfers', 'readwrite');
+  const done = transactionDone(transaction);
+  const store = transaction.objectStore('transfers');
+  const request = store.get(Number(transferId));
+  let cancelled = false;
+  request.onsuccess = () => {
+    const transfer = request.result;
+    if (!transfer || transfer.voided) {
+      transaction.abort();
+      return;
+    }
+    store.put({ ...transfer, voided: true, cancelledAt: new Date().toISOString() });
+    cancelled = true;
+  };
+  request.onerror = () => transaction.abort();
+  await done;
+  if (!cancelled) throw new Error('Transfer was not found or was already cancelled');
+  return { transferId: Number(transferId), cancelled: true };
+}
+
 export async function remove(storeName, id) {
   assertStoreName(storeName);
   const database = await getDatabase();

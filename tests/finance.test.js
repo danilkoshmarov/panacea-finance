@@ -27,6 +27,23 @@ test('account balance includes income, expenses and transfers without treating t
   assert.equal(calculateAccountBalance(account, transactions, transfers), 1250);
 });
 
+test('cancelled transfers stay in history but no longer affect account and scope balances', () => {
+  const accounts = [
+    { id: 1, opening: 1000, scope: 'personal' },
+    { id: 2, opening: 500, scope: 'business' }
+  ];
+  const transfers = [
+    { id: 1, fromId: 1, toId: 2, amount: 300 },
+    { id: 2, fromId: 1, toId: 2, amount: 200, voided: true }
+  ];
+  assert.equal(calculateAccountBalance(accounts[0], [], transfers), 700);
+  assert.equal(calculateAccountBalance(accounts[1], [], transfers), 800);
+  const scoped = calculateFinancialTotalsByScope(accounts, [], transfers);
+  assert.equal(scoped.personal.balance, 700);
+  assert.equal(scoped.business.balance, 800);
+  assert.equal(calculateFinancialTotals(accounts, [], transfers).balance, 1500);
+});
+
 test('financial totals sum operation types and account balances', () => {
   const accounts = [{ id: 1, opening: 100 }];
   const transactions = [
