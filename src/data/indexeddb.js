@@ -213,8 +213,11 @@ export async function cancelSale(movementId) {
     let product;
     let cashRecord;
     let allMovements;
+    let productLoaded = false;
+    let cashLoaded = false;
+    let movementsLoaded = false;
     const ready = () => {
-      if (!product || !cashRecord || !allMovements) return;
+      if (!productLoaded || !cashLoaded || !movementsLoaded) return;
       try {
         const { quantity: restoredQuantity, restoredCost } =
           validateSaleCancellation(sale, cashRecord, product, allMovements);
@@ -247,9 +250,9 @@ export async function cancelSale(movementId) {
         transaction.abort();
       }
     };
-    productRequest.onsuccess = () => { product = productRequest.result; ready(); };
-    cashRequest.onsuccess = () => { cashRecord = cashRequest.result; ready(); };
-    allMovementsRequest.onsuccess = () => { allMovements = allMovementsRequest.result; ready(); };
+    productRequest.onsuccess = () => { product = productRequest.result; productLoaded = true; ready(); };
+    cashRequest.onsuccess = () => { cashRecord = cashRequest.result; cashLoaded = true; ready(); };
+    allMovementsRequest.onsuccess = () => { allMovements = allMovementsRequest.result; movementsLoaded = true; ready(); };
     productRequest.onerror = () => transaction.abort();
     cashRequest.onerror = () => transaction.abort();
     allMovementsRequest.onerror = () => transaction.abort();
