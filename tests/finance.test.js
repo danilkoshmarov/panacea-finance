@@ -10,7 +10,8 @@ import {
   calculateMonthlyAnalytics,
   calculateMoveScenario,
   calculateUnitEconomics,
-  calculateGoalProgress
+  calculateGoalProgress,
+  validateSaleCancellation
 } from '../src/core/finance.js';
 
 test('account balance includes income, expenses and transfers without treating transfers as income', () => {
