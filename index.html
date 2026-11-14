@@ -138,6 +138,33 @@ form{gap:14px}
 <div class="card" style="margin-top:14px"><h3>Правило проверки</h3><p class="muted">После каждой закупки или продажи сверяй три вещи: остаток денег на нужном счёте, количество товара и стоимость склада. Если что-то не сходится — не создавай компенсирующую операцию наугад; сначала проверь историю операций и движений склада.</p><p class="foot">Важно: «Общий капитал» включает деньги на счетах и стоимость оставшегося товара. Выручка — не то же самое, что прибыль.</p></div>
 </section>
 </div>
+<script>
+(function(){
+  function report(message){
+    let panel=document.getElementById('runtimeErrorPanel');
+    if(!panel){
+      panel=document.createElement('div');
+      panel.id='runtimeErrorPanel';
+      panel.style.cssText='position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;padding:14px 16px;border:1px solid #ff9298;border-radius:12px;background:#25171b;color:#fff;font:13px/1.5 system-ui,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 8px 32px #0008';
+      document.body.appendChild(panel);
+    }
+    panel.textContent='Panacea Finance: обнаружена ошибка запуска.\n'+String(message||'Подробности недоступны')+'\nСделай скриншот этого сообщения и отправь его разработчику. Данные браузера не изменялись.';
+  }
+  window.addEventListener('error',function(event){
+    const target=event.target;
+    if(target&&target!==window){
+      const source=target.src||target.href||target.tagName||'ресурс';
+      report('Не удалось загрузить: '+source);
+      return;
+    }
+    report((event.message||'Ошибка JavaScript')+(event.filename?'\n'+event.filename+':'+event.lineno+':'+event.colno:''));
+  },true);
+  window.addEventListener('unhandledrejection',function(event){
+    const reason=event.reason;
+    report('Необработанная ошибка: '+(reason&&reason.stack?reason.stack:reason&&reason.message?reason.message:String(reason)));
+  });
+})();
+</script>
 <script type="module">
 import {
   calculateAccountBalance as balance,
